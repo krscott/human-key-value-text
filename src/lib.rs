@@ -3,21 +3,21 @@ use std::iter;
 
 const DEFAULT_SEPARATOR: &str = ": ";
 
-pub struct SerializeData<'a, I, J>
+pub struct SerializeData<'a, PairIter, ExtraIter>
 where
-    I: Iterator<Item = &'a (&'a str, &'a str)>,
-    J: Iterator<Item = &'a &'a str>,
+    PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
+    ExtraIter: Iterator<Item = &'a &'a str>,
 {
-    pub pairs_iterable: I,
-    pub extra_lines_iterable: J,
+    pub pairs_iterable: PairIter,
+    pub extra_lines_iterable: ExtraIter,
     pub separator: &'a str,
     pub newline: &'a str,
 }
 
-impl<'a, I, J> SerializeData<'a, I, J>
+impl<'a, PairIter, ExtraIter> SerializeData<'a, PairIter, ExtraIter>
 where
-    I: Iterator<Item = &'a (&'a str, &'a str)>,
-    J: Iterator<Item = &'a &'a str>,
+    PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
+    ExtraIter: Iterator<Item = &'a &'a str>,
 {
     pub fn write<W: Write>(self, mut writer: W) -> io::Result<()> {
         for (k, v) in self.pairs_iterable {
@@ -54,25 +54,25 @@ where
     }
 }
 
-impl<'a, I, J> From<SerializeData<'a, I, J>> for String
+impl<'a, PairIter, ExtraIter> From<SerializeData<'a, PairIter, ExtraIter>> for String
 where
-    I: Iterator<Item = &'a (&'a str, &'a str)>,
-    J: Iterator<Item = &'a &'a str>,
+    PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
+    ExtraIter: Iterator<Item = &'a &'a str>,
 {
-    fn from(serialize_data: SerializeData<'a, I, J>) -> Self {
+    fn from(serialize_data: SerializeData<'a, PairIter, ExtraIter>) -> Self {
         serialize_data.into_string()
     }
 }
 
-pub fn to_string_with_options<'a, I, J>(
+pub fn to_string_with_options<'a, PairIter, ExtraIter>(
     separator: &'a str,
     newline: &'a str,
-    extra_lines: J,
-    iterable: I,
+    extra_lines: ExtraIter,
+    iterable: PairIter,
 ) -> String
 where
-    I: Iterator<Item = &'a (&'a str, &'a str)>,
-    J: Iterator<Item = &'a &'a str>,
+    PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
+    ExtraIter: Iterator<Item = &'a &'a str>,
 {
     SerializeData {
         pairs_iterable: iterable,
@@ -83,9 +83,9 @@ where
     .into_string()
 }
 
-pub fn to_string<'a, I>(iterable: I) -> String
+pub fn to_string<'a, PairIter>(iterable: PairIter) -> String
 where
-    I: Iterator<Item = &'a (&'a str, &'a str)>,
+    PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
 {
     to_string_with_options(DEFAULT_SEPARATOR, "\n", iter::empty(), iterable)
 }
