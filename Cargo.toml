@@ -1,6 +1,6 @@
 [package]
-name = "human-key-value-text"
-version = "0.1.0"
+name = "key_value_text"
+version = "0.2.0"
 authors = ["Kris Scott <kscott91@gmail.com>"]
 edition = "2018"
 

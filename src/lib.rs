@@ -1,93 +1,152 @@
-use std::io::{self, Write};
-use std::iter;
+use std::collections::HashMap;
 
 const DEFAULT_SEPARATOR: &str = ": ";
+const DEFAULT_NEWLINE: &str = "\n";
 
-pub struct SerializeData<'a, PairIter, ExtraIter>
+pub struct Serializer<'a, PairIter, ExtraIter>
 where
     PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
     ExtraIter: Iterator<Item = &'a &'a str>,
 {
-    pub pairs_iterable: PairIter,
-    pub extra_lines_iterable: ExtraIter,
-    pub separator: &'a str,
-    pub newline: &'a str,
+    separator: &'a str,
+    newline: &'a str,
+    pairs: Option<PairIter>,
+    extra_lines: Option<ExtraIter>,
 }
 
-impl<'a, PairIter, ExtraIter> SerializeData<'a, PairIter, ExtraIter>
+impl<'a, PairIter, ExtraIter> Serializer<'a, PairIter, ExtraIter>
 where
     PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
     ExtraIter: Iterator<Item = &'a &'a str>,
 {
-    pub fn write<W: Write>(self, mut writer: W) -> io::Result<()> {
-        for (k, v) in self.pairs_iterable {
-            writer.write(k.as_bytes())?;
-            writer.write(self.separator.as_bytes())?;
-            writer.write(v.as_bytes())?;
-            writer.write(self.newline.as_bytes())?;
+    fn new() -> Self {
+        Self {
+            separator: DEFAULT_SEPARATOR,
+            newline: DEFAULT_NEWLINE,
+            pairs: None,
+            extra_lines: None,
         }
-
-        for s in self.extra_lines_iterable {
-            writer.write(self.newline.as_bytes())?;
-            writer.write(s.as_bytes())?;
-        }
-
-        Ok(())
     }
 
-    pub fn into_string(self) -> String {
+    pub fn separator(mut self, separator: &'a str) -> Self {
+        self.separator = separator;
+        self
+    }
+
+    pub fn newline(mut self, newline: &'a str) -> Self {
+        self.newline = newline;
+        self
+    }
+
+    pub fn pairs(mut self, pairs: PairIter) -> Self {
+        self.pairs = Some(pairs);
+        self
+    }
+
+    pub fn extra_lines(mut self, extra_lines: ExtraIter) -> Self {
+        self.extra_lines = Some(extra_lines);
+        self
+    }
+
+    pub fn serialize(self) -> String {
         let mut out = String::from("");
 
-        for (k, v) in self.pairs_iterable {
-            out.push_str(k);
-            out.push_str(self.separator);
-            out.push_str(v);
-            out.push_str(self.newline);
+        if let Some(pairs) = self.pairs {
+            for (k, v) in pairs {
+                out.push_str(k);
+                out.push_str(self.separator);
+                out.push_str(v);
+                out.push_str(self.newline);
+            }
         }
 
-        for s in self.extra_lines_iterable {
-            out.push_str(s);
-            out.push_str(self.newline);
+        if let Some(extra_lines) = self.extra_lines {
+            for line in extra_lines {
+                out.push_str(line);
+                out.push_str(self.newline);
+            }
         }
 
         out
     }
 }
 
-impl<'a, PairIter, ExtraIter> From<SerializeData<'a, PairIter, ExtraIter>> for String
+pub fn serializer<'a, PairIter, ExtraIter>() -> Serializer<'a, PairIter, ExtraIter>
 where
     PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
     ExtraIter: Iterator<Item = &'a &'a str>,
 {
-    fn from(serialize_data: SerializeData<'a, PairIter, ExtraIter>) -> Self {
-        serialize_data.into_string()
-    }
-}
-
-pub fn to_string_with_options<'a, PairIter, ExtraIter>(
-    separator: &'a str,
-    newline: &'a str,
-    extra_lines: ExtraIter,
-    iterable: PairIter,
-) -> String
-where
-    PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
-    ExtraIter: Iterator<Item = &'a &'a str>,
-{
-    SerializeData {
-        pairs_iterable: iterable,
-        extra_lines_iterable: extra_lines,
-        separator,
-        newline,
-    }
-    .into_string()
+    Serializer::new()
 }
 
 pub fn to_string<'a, PairIter>(iterable: PairIter) -> String
 where
     PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
 {
-    to_string_with_options(DEFAULT_SEPARATOR, "\n", iter::empty(), iterable)
+    serializer::<'a, PairIter, core::slice::Iter<&'a str>>()
+        .pairs(iterable)
+        .serialize()
+}
+
+pub fn serialize<'a, PairIter, ExtraIter>(pairs_iter: PairIter, extra_iter: ExtraIter) -> String
+where
+    PairIter: Iterator<Item = &'a (&'a str, &'a str)>,
+    ExtraIter: Iterator<Item = &'a &'a str>,
+{
+    serializer()
+        .pairs(pairs_iter)
+        .extra_lines(extra_iter)
+        .serialize()
+}
+
+pub struct Deserializer<'a, 'b> {
+    separator: &'a str,
+    newline: &'a str,
+    keys: &'b [&'b str],
+}
+
+impl<'a, 'b> Deserializer<'a, 'b> {
+    fn new() -> Self {
+        Self {
+            separator: DEFAULT_SEPARATOR,
+            newline: DEFAULT_NEWLINE,
+            keys: &[],
+        }
+    }
+
+    pub fn separator(mut self, separator: &'a str) -> Self {
+        self.separator = separator;
+        self
+    }
+
+    pub fn newline(mut self, newline: &'a str) -> Self {
+        self.newline = newline;
+        self
+    }
+
+    pub fn keys(mut self, keys: &'b [&'b str]) -> Self {
+        self.keys = keys;
+        self
+    }
+
+    pub fn deserialize(self, source: &'a str) -> DeserializeData<'a> {
+        let mut pairs = Vec::new();
+        let mut extra_lines = Vec::new();
+
+        for line in source.lines() {
+            // TODO: Use line.split_once() when stable
+
+            let splits: Vec<_> = line.splitn(2, self.separator).collect();
+
+            if splits.len() == 2 && self.keys.contains(&splits[0]) {
+                pairs.push((splits[0], splits[1]));
+            } else {
+                extra_lines.push(line);
+            }
+        }
+
+        DeserializeData { pairs, extra_lines }
+    }
 }
 
 pub struct DeserializeData<'a> {
@@ -96,36 +155,40 @@ pub struct DeserializeData<'a> {
 }
 
 impl<'a> DeserializeData<'a> {
-    fn new(separator: &'a str, keys: &[&'a str], source_str: &'a str) -> Self {
-        let mut pairs = Vec::new();
-        let mut extra_lines = Vec::new();
+    pub fn pairs_hashmap(&self) -> HashMap<&'a str, &'a str> {
+        self.pairs.iter().map(|(k, v)| (*k, *v)).collect()
+    }
 
-        for line in source_str.lines() {
-            // TODO: Use line.split_once() when stable
+    pub fn pairs_hashmap_owned(&self) -> HashMap<String, String> {
+        self.pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect()
+    }
 
-            let splits: Vec<_> = line.splitn(2, separator).collect();
+    pub fn extra_lines_vec(&self) -> Vec<&'a str> {
+        self.extra_lines.clone()
+    }
 
-            if splits.len() == 2 && keys.contains(&splits[0]) {
-                pairs.push((splits[0], splits[1]));
-            } else {
-                extra_lines.push(line);
-            }
-        }
-
-        Self { pairs, extra_lines }
+    pub fn extra_lines_vec_owned(&self) -> Vec<String> {
+        self.extra_lines
+            .iter()
+            .map(|line| (*line).to_owned())
+            .collect()
     }
 }
 
-pub fn parse_with_separator<'a>(
-    separator: &'a str,
-    keys: &[&'a str],
-    source_str: &'a str,
-) -> DeserializeData<'a> {
-    DeserializeData::new(separator, keys, source_str)
+pub fn deserializer<'a, 'b>() -> Deserializer<'a, 'b> {
+    Deserializer::new()
 }
 
-pub fn parse<'a>(keys: &[&'a str], source_str: &'a str) -> DeserializeData<'a> {
-    parse_with_separator(DEFAULT_SEPARATOR, keys, source_str)
+pub fn parse<'a, 'b>(
+    keys: &'b [&'b str],
+    source: &'a str,
+) -> (Vec<(&'a str, &'a str)>, Vec<&'a str>) {
+    let DeserializeData { pairs, extra_lines } = Deserializer::new().keys(keys).deserialize(source);
+
+    (pairs, extra_lines)
 }
 
 #[cfg(test)]
@@ -133,12 +196,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_serialize_data() {
-        let ser_string = to_string_with_options(
-            ": ",
-            "\n",
-            ["extra: lines", "and stuff"].iter(),
+    fn test_serialize_basic() {
+        let ser_string = to_string([("foo", "bar"), ("baz", "123")].iter());
+
+        let expected = "\
+            foo: bar\n\
+            baz: 123\n\
+        ";
+
+        assert_eq!(ser_string, expected);
+    }
+
+    #[test]
+    fn test_serialize_basic2() {
+        let ser_string = serialize(
             [("foo", "bar"), ("baz", "123")].iter(),
+            ["extra: lines", "and stuff"].iter(),
         );
 
         let expected = "\
@@ -152,7 +225,26 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialize_data() {
+    fn test_serialize_data() {
+        let ser_string = serializer()
+            .separator("=")
+            .newline("\r\n")
+            .pairs([("foo", "bar"), ("baz", "123")].iter())
+            .extra_lines(["extra=lines", "and stuff"].iter())
+            .serialize();
+
+        let expected = "\
+            foo=bar\r\n\
+            baz=123\r\n\
+            extra=lines\r\n\
+            and stuff\r\n\
+        ";
+
+        assert_eq!(ser_string, expected);
+    }
+
+    #[test]
+    fn test_deserialize_basic() {
         let source = "\
             foo: bar\n\
             baz: 123\n\
@@ -160,9 +252,31 @@ mod tests {
             and stuff\n\
         ";
 
-        let data = parse_with_separator(": ", &vec!["foo", "baz"], source);
+        let (pairs, extra_lines) = parse(&["foo", "baz"], source);
 
-        assert_eq!(data.pairs, vec![("foo", "bar"), ("baz", "123")]);
-        assert_eq!(data.extra_lines, vec!["extra: lines", "and stuff"]);
+        assert_eq!(pairs, vec![("foo", "bar"), ("baz", "123")]);
+        assert_eq!(extra_lines, vec!["extra: lines", "and stuff"]);
+    }
+
+    #[test]
+    fn test_deserialize_data() {
+        let source = "\
+            foo=bar\r\n\
+            baz=123\r\n\
+            extra=lines\r\n\
+            and stuff\r\n\
+        ";
+
+        let data = deserializer()
+            .separator("=")
+            .newline("\r\n")
+            .keys(&["foo", "baz"])
+            .deserialize(source);
+
+        let pairs = data.pairs;
+        let extra_lines = data.extra_lines;
+
+        assert_eq!(pairs, vec![("foo", "bar"), ("baz", "123")]);
+        assert_eq!(extra_lines, vec!["extra=lines", "and stuff"]);
     }
 }
